@@ -21,6 +21,8 @@ class Dashboard extends BaseDashboard
         if (auth()->check()) {
             if (auth()->user()->isAdmin()) {
                 $widgets[] = \App\Filament\Widgets\DeviceStatsOverview::class;
+            } else {
+                $widgets[] = \App\Filament\Widgets\UserDeviceStats::class;
             }
 
             $widgets[] = \App\Filament\Widgets\MetricsChart::class;

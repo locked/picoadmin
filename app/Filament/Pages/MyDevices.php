@@ -63,9 +63,13 @@ class MyDevices extends Page implements HasForms
 
     public function getDevices()
     {
-        return Device::where('user_id', auth()->id())
-            ->with(['deviceModel', 'alarms'])
-            ->get();
+        $query = Device::with(['deviceModel', 'alarms']);
+
+        if (!auth()->user()->isAdmin()) {
+            $query->where('user_id', auth()->id());
+        }
+
+        return $query->get();
     }
 
     public function getMetrics(int $deviceId, ?int $days = 7): array
