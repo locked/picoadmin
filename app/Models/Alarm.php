@@ -11,7 +11,7 @@ class Alarm extends Model
 
     protected $fillable = [
         'device_id',
-        'is_set',
+        'isset',
         'weekdays',
         'hour',
         'minute',
@@ -22,7 +22,7 @@ class Alarm extends Model
     ];
 
     protected $casts = [
-        'is_set' => 'boolean',
+        'isset' => 'boolean',
     ];
 
     public function device(): BelongsTo

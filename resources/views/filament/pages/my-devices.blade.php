@@ -17,7 +17,19 @@
                             <span class="fi-badge fi-badge-size-sm {{ $device->deviceModel?->type === 'water' ? 'fi-badge-color-info' : 'fi-badge-color-success' }}">
                                 {{ ucfirst($device->deviceModel?->type ?? 'Unknown') }}
                             </span>
-                            <span>{{ $device->serialnumber }}</span>
+                            @if ($this->editingDeviceNameId === $device->id)
+                                <div class="flex items-center gap-1">
+                                    <input type="text" wire:model="editingDeviceName" placeholder="Device name" class="fi-input w-48 rounded-lg bg-white dark:bg-white/5 border border-gray-300 dark:border-white/10 px-2 py-1 text-sm" />
+                                    <x-filament::icon-button icon="heroicon-o-check" size="sm" wire:click="saveDeviceName" />
+                                    <x-filament::icon-button icon="heroicon-o-x-mark" size="sm" color="gray" wire:click="cancelDeviceNameEdit" />
+                                </div>
+                            @else
+                                <span>{{ $device->name ?? $device->serialnumber }}</span>
+                                @if ($device->name)
+                                    <span class="text-xs text-gray-400 font-mono">{{ $device->serialnumber }}</span>
+                                @endif
+                                <x-filament::icon-button icon="heroicon-o-pencil" size="sm" color="gray" wire:click="editDeviceName({{ $device->id }})" />
+                            @endif
                             <span class="text-sm text-gray-500">v{{ $device->current_firmware ?? 'N/A' }}</span>
                         </div>
                     </x-slot>
@@ -46,12 +58,8 @@
 
                                             <div class="grid grid-cols-3 md:grid-cols-4 gap-3 items-end mb-3">
                                                 <div>
-                                                    <label class="text-xs text-gray-500 block mb-1">Hour</label>
-                                                    <input type="number" min="0" max="23" wire:model="alarmHour" class="fi-input w-full rounded-lg bg-white dark:bg-white/5 border border-gray-300 dark:border-white/10 px-3 py-2 text-sm" />
-                                                </div>
-                                                <div>
-                                                    <label class="text-xs text-gray-500 block mb-1">Minute</label>
-                                                    <input type="number" min="0" max="59" wire:model="alarmMinute" class="fi-input w-full rounded-lg bg-white dark:bg-white/5 border border-gray-300 dark:border-white/10 px-3 py-2 text-sm" />
+                                                    <label class="text-xs text-gray-500 block mb-1">Time</label>
+                                                    <input type="time" wire:model="alarmTime" class="fi-input w-full rounded-lg bg-white dark:bg-white/5 border border-gray-300 dark:border-white/10 px-3 py-2 text-sm" />
                                                 </div>
                                                 <div>
                                                     <label class="text-xs text-gray-500 block mb-1">Week</label>
@@ -93,7 +101,7 @@
                                         {{-- Display mode --}}
                                         <div class="flex items-center gap-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
                                             <div class="flex items-center gap-2">
-                                                @if ($alarm->is_set)
+                                                @if ($alarm->isset)
                                                     <span class="inline-block w-3 h-3 bg-green-500 rounded-full"></span>
                                                 @else
                                                     <span class="inline-block w-3 h-3 bg-gray-300 rounded-full"></span>
@@ -150,6 +158,46 @@
                                     </div>
                                 @endforeach
                             </div>
+                        </div>
+                    @endif
+
+                    {{-- Pump History (for water devices) --}}
+                    @if ($device->deviceModel?->type === 'water')
+                        @php $pumpHistory = $this->getPumpHistory($device->id); @endphp
+                        <div class="mt-4">
+                            <h3 class="text-lg font-semibold mb-3">Pump History</h3>
+                            @if (count($pumpHistory) > 0)
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-sm">
+                                        <thead>
+                                            <tr class="border-b border-gray-200 dark:border-white/10">
+                                                <th class="text-left py-2 px-3 font-medium text-gray-600 dark:text-gray-400">Date</th>
+                                                <th class="text-right py-2 px-3 font-medium text-gray-600 dark:text-gray-400">Duration</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach ($pumpHistory as $entry)
+                                                <tr class="border-b border-gray-100 dark:border-white/5">
+                                                    <td class="py-1.5 px-3 text-gray-700 dark:text-gray-300">{{ $entry['date'] }}</td>
+                                                    <td class="py-1.5 px-3 text-right font-mono">
+                                                        @php
+                                                            $ms = (int) $entry['duration_ms'];
+                                                            if ($ms >= 1000) {
+                                                                $s = number_format($ms / 1000, 1);
+                                                                echo $s . ' s';
+                                                            } else {
+                                                                echo $ms . ' ms';
+                                                            }
+                                                        @endphp
+                                                    </td>
+                                                </tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
+                                </div>
+                            @else
+                                <p class="text-sm text-gray-500">No pump triggers recorded.</p>
+                            @endif
                         </div>
                     @endif
                 </x-filament::section>

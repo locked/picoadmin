@@ -5,17 +5,11 @@ namespace App\Filament\Pages;
 use App\Models\Alarm;
 use App\Models\Device;
 use App\Models\Metric;
-use Filament\Forms;
-use Filament\Forms\Concerns\InteractsWithForms;
-use Filament\Forms\Contracts\HasForms;
-use Filament\Forms\Form;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 
-class MyDevices extends Page implements HasForms
+class MyDevices extends Page
 {
-    use InteractsWithForms;
-
     protected static ?string $navigationIcon = 'heroicon-o-cpu-chip';
 
     protected static ?string $navigationGroup = 'My Devices';
@@ -24,9 +18,11 @@ class MyDevices extends Page implements HasForms
 
     protected static string $view = 'filament.pages.my-devices';
 
-    public ?array $data = [];
-
     public ?int $editingAlarmId = null;
+
+    public ?int $editingDeviceNameId = null;
+
+    public ?string $editingDeviceName = '';
 
     public ?bool $alarmIsSet = false;
 
@@ -41,6 +37,8 @@ class MyDevices extends Page implements HasForms
     public ?int $alarmHour = 0;
 
     public ?int $alarmMinute = 0;
+
+    public string $alarmTime = '07:00';
 
     public string $alarmWeek = 'all';
 
@@ -58,7 +56,6 @@ class MyDevices extends Page implements HasForms
 
     public function mount(): void
     {
-        $this->form->fill([]);
     }
 
     public function getDevices()
@@ -95,11 +92,26 @@ class MyDevices extends Page implements HasForms
             ->toArray();
     }
 
+    public function getPumpHistory(int $deviceId): array
+    {
+        return Metric::where('device_id', $deviceId)
+            ->where('metric_type', Metric::TYPE_PUMP)
+            ->where('metric_value', '>', 0)
+            ->orderByDesc('metric_date')
+            ->limit(10)
+            ->get()
+            ->map(fn ($m) => [
+                'date' => $m->metric_date->format('Y-m-d H:i:s'),
+                'duration_ms' => $m->metric_value,
+            ])
+            ->toArray();
+    }
+
     public function editAlarm(int $alarmId): void
     {
         $alarm = Alarm::findOrFail($alarmId);
         $this->editingAlarmId = $alarmId;
-        $this->alarmIsSet = $alarm->is_set;
+        $this->alarmIsSet = $alarm->isset;
         $this->alarmMon = (bool) ($alarm->weekdays & self::DAY_BITS['mon']);
         $this->alarmTue = (bool) ($alarm->weekdays & self::DAY_BITS['tue']);
         $this->alarmWed = (bool) ($alarm->weekdays & self::DAY_BITS['wed']);
@@ -109,6 +121,7 @@ class MyDevices extends Page implements HasForms
         $this->alarmSun = (bool) ($alarm->weekdays & self::DAY_BITS['sun']);
         $this->alarmHour = $alarm->hour;
         $this->alarmMinute = $alarm->minute;
+        $this->alarmTime = sprintf('%02d:%02d', $alarm->hour, $alarm->minute);
         $this->alarmWeek = $alarm->week;
         $this->alarmChime = $alarm->chime;
     }
@@ -124,12 +137,14 @@ class MyDevices extends Page implements HasForms
         if ($this->alarmSat) $weekdays |= self::DAY_BITS['sat'];
         if ($this->alarmSun) $weekdays |= self::DAY_BITS['sun'];
 
+        [$hour, $minute] = array_map('intval', explode(':', $this->alarmTime));
+
         $alarm = Alarm::findOrFail($this->editingAlarmId);
         $alarm->update([
-            'is_set' => $this->alarmIsSet,
+            'isset' => $this->alarmIsSet,
             'weekdays' => $weekdays,
-            'hour' => $this->alarmHour,
-            'minute' => $this->alarmMinute,
+            'hour' => $hour,
+            'minute' => $minute,
             'week' => $this->alarmWeek,
             'chime' => $this->alarmChime,
             'modified' => now(),
@@ -150,7 +165,7 @@ class MyDevices extends Page implements HasForms
         $now = now();
         Alarm::create([
             'device_id' => $deviceId,
-            'is_set' => true,
+            'isset' => true,
             'weekdays' => 0b01111100,
             'hour' => 7,
             'minute' => 0,
@@ -168,5 +183,32 @@ class MyDevices extends Page implements HasForms
         Alarm::findOrFail($alarmId)->delete();
 
         Notification::make()->title('Alarm deleted')->success()->send();
+    }
+
+    public function editDeviceName(int $deviceId): void
+    {
+        $device = Device::findOrFail($deviceId);
+        $this->editingDeviceNameId = $deviceId;
+        $this->editingDeviceName = $device->name;
+    }
+
+    public function saveDeviceName(): void
+    {
+        $device = Device::findOrFail($this->editingDeviceNameId);
+        $device->update([
+            'name' => $this->editingDeviceName ?: null,
+            'modified' => now(),
+        ]);
+
+        $this->editingDeviceNameId = null;
+        $this->editingDeviceName = '';
+
+        Notification::make()->title('Device name updated')->success()->send();
+    }
+
+    public function cancelDeviceNameEdit(): void
+    {
+        $this->editingDeviceNameId = null;
+        $this->editingDeviceName = '';
     }
 }

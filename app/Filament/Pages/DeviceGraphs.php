@@ -16,6 +16,21 @@ class DeviceGraphs extends Page
 
     protected static string $view = 'filament.pages.device-graphs';
 
+    public string $timeRange = '7d';
+
+    public function mount(): void
+    {
+        $this->timeRange = request()->query('range', '7d');
+    }
+
+    const TIME_RANGE_OPTIONS = [
+        '24h' => '24 hours',
+        '3d' => '3 days',
+        '7d' => '7 days',
+        '14d' => '14 days',
+        '30d' => '30 days',
+    ];
+
     const CHART_GROUPS = [
         [
             'key' => 'co2_tvoc',
@@ -121,7 +136,7 @@ class DeviceGraphs extends Page
 
             $metricsByType = Metric::where('device_id', $device->id)
                 ->whereIn('metric_type', $allowedTypes)
-                ->where('metric_date', '>=', now()->subDays(7))
+                ->where('metric_date', '>=', $this->getTimeRangeSince())
                 ->orderBy('metric_date')
                 ->get()
                 ->groupBy('metric_type');
@@ -132,6 +147,68 @@ class DeviceGraphs extends Page
                 $result[] = [
                     'device' => $device,
                     'chartGroups' => $chartGroups,
+                ];
+            }
+        }
+
+        return $result;
+    }
+
+    private function getTimeRangeSince(): \Illuminate\Support\Carbon
+    {
+        return match ($this->timeRange) {
+            '24h' => now()->subDay(),
+            '3d' => now()->subDays(3),
+            '7d' => now()->subDays(7),
+            '14d' => now()->subDays(14),
+            '30d' => now()->subDays(30),
+            default => now()->subDays(7),
+        };
+    }
+
+    public function getChartDataJson(): array
+    {
+        $deviceMetrics = $this->getDeviceMetrics();
+        $result = [];
+
+        foreach ($deviceMetrics as $deviceData) {
+            $device = $deviceData['device'];
+
+            foreach ($deviceData['chartGroups'] as $group) {
+                $chartId = 'chart-' . $device->id . '-' . $group['key'];
+                $allLabels = [];
+                foreach ($group['datasets'] as $ds) {
+                    foreach ($ds['data'] as $point) {
+                        $allLabels[] = $point['date'];
+                    }
+                }
+                $labels = array_values(array_unique($allLabels));
+                sort($labels);
+
+                $datasets = [];
+                foreach ($group['datasets'] as $ds) {
+                    $dataMap = [];
+                    foreach ($ds['data'] as $point) {
+                        $dataMap[$point['date']] = $point['value'];
+                    }
+                    $mapped = [];
+                    foreach ($labels as $l) {
+                        $mapped[] = $dataMap[$l] ?? null;
+                    }
+                    $datasets[] = [
+                        'label' => $ds['label'],
+                        'data' => $mapped,
+                        'borderColor' => $ds['color'],
+                        'tension' => 0.3,
+                        'fill' => false,
+                        'pointRadius' => 2,
+                    ];
+                }
+
+                $result[$chartId] = [
+                    'labels' => $labels,
+                    'datasets' => $datasets,
+                    'groupKey' => $group['key'],
                 ];
             }
         }

@@ -7,7 +7,9 @@ use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
 
+use Filament\FontProviders\LocalFontProvider;
 use Filament\Panel;
+use App\AvatarProviders\LocalInitialsProvider;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
 use Filament\Widgets;
@@ -27,9 +29,11 @@ class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('admin')
             ->login(\App\Filament\Pages\Auth\GoogleLogin::class)
+            ->font('Inter', provider: LocalFontProvider::class)
             ->colors([
                 'primary' => Color::Blue,
             ])
+            ->defaultAvatarProvider(LocalInitialsProvider::class)
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
             ->pages([

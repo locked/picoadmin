@@ -29,7 +29,7 @@ class AlarmsRelationManager extends RelationManager
     {
         return $form
             ->schema([
-                Forms\Components\Toggle::make('is_set')
+                Forms\Components\Toggle::make('isset')
                     ->label('Enabled')
                     ->default(true),
                 Forms\Components\TextInput::make('weekdays')
@@ -68,7 +68,7 @@ class AlarmsRelationManager extends RelationManager
         return $table
             ->recordTitleAttribute('chime')
             ->columns([
-                Tables\Columns\IconColumn::make('is_set')
+                Tables\Columns\IconColumn::make('isset')
                     ->boolean()
                     ->label('On'),
                 Tables\Columns\TextColumn::make('weekdays')
