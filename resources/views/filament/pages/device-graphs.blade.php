@@ -45,13 +45,6 @@
                         @foreach ($deviceData['chartGroups'] as $group)
                             @php
                                 $chartId = 'chart-' . $device->id . '-' . $group['key'];
-                                $allLabels = collect();
-                                foreach ($group['datasets'] as $ds) {
-                                    foreach ($ds['data'] as $point) {
-                                        $allLabels->push($point['date']);
-                                    }
-                                }
-                                $labels = $allLabels->unique()->sort()->values()->all();
                             @endphp
                             <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
                                 <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
@@ -71,6 +64,7 @@
         @push('scripts')
             <script src="/js/vendor/chart.umd.min.js"></script>
             <script src="/js/vendor/chartjs-plugin-annotation.min.js"></script>
+            <script src="/js/vendor/chartjs-adapter-date-fns.bundle.min.js"></script>
             <script>
                 document.addEventListener('livewire:initialized', function () {
                     @foreach ($deviceMetrics as $deviceData)
@@ -78,33 +72,13 @@
                         @foreach ($deviceData['chartGroups'] as $group)
                             @php
                                 $chartId = 'chart-' . $device->id . '-' . $group['key'];
-                                $allLabels = collect();
-                                foreach ($group['datasets'] as $ds) {
-                                    foreach ($ds['data'] as $point) {
-                                        $allLabels->push($point['date']);
-                                    }
-                                }
-                                $labels = $allLabels->unique()->sort()->values()->all();
                             @endphp
                             (function() {
                                 var ctx = document.getElementById('{{ $chartId }}');
                                 if (!ctx) return;
-                                var labels = @js($labels);
-                                var datasets = [
-                                    @foreach ($group['datasets'] as $ds)
-                                        {
-                                            label: @js($ds['label']),
-                                            data: labels.map(function(l) {
-                                                var found = @js($ds['data']).find(function(p) { return p.date === l; });
-                                                return found ? found.value : null;
-                                            }),
-                                            borderColor: @js($ds['color']),
-                                            tension: 0.3,
-                                            fill: false,
-                                            pointRadius: 2,
-                                        },
-                                    @endforeach
-                                ];
+                                var chartDatasets = @js($group['datasets']);
+                                var chartMin = @js($deviceData['min']);
+                                var chartMax = @js($deviceData['max']);
                                 var annotations = {};
                                 var groupKey = @js($group['key']);
                                 if (groupKey === 'co2_tvoc') {
@@ -129,18 +103,29 @@
                                 new Chart(ctx, {
                                     type: 'line',
                                     data: {
-                                        labels: labels,
-                                        datasets: datasets
+                                        datasets: chartDatasets
                                     },
                                     options: {
                                         responsive: true,
                                         maintainAspectRatio: false,
                                         plugins: {
-                                            legend: { display: datasets.length > 1 },
+                                            legend: { display: chartDatasets.length > 1 },
                                             annotation: { annotations: annotations }
                                         },
                                         scales: {
-                                            x: { display: true, ticks: { maxTicksLimit: 8, font: { size: 10 } } },
+                                            x: {
+                                                type: 'time',
+                                                min: chartMin,
+                                                max: chartMax,
+                                                time: {
+                                                    tooltipFormat: 'dd MMM yyyy HH:mm',
+                                                    displayFormats: {
+                                                        hour: 'dd MMM HH:mm',
+                                                        day: 'dd MMM',
+                                                    }
+                                                },
+                                                ticks: { maxTicksLimit: 8, font: { size: 10 } }
+                                            },
                                             y: { display: true, ticks: { font: { size: 10 } }, beginAtZero: true }
                                         }
                                     }

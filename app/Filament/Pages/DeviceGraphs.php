@@ -75,10 +75,13 @@ class DeviceGraphs extends Page
                 $datasets[] = [
                     'label' => Metric::typeLabel($type),
                     'data' => $entries->map(fn ($e) => [
-                        'date' => $e->metric_date->format('Y-m-d H:i'),
-                        'value' => $e->metric_value,
+                        'x' => $e->metric_date->getTimestampMs(),
+                        'y' => $e->metric_value,
                     ])->values()->toArray(),
-                    'color' => self::CHART_COLORS[$colorIdx % count(self::CHART_COLORS)],
+                    'borderColor' => self::CHART_COLORS[$colorIdx % count(self::CHART_COLORS)],
+                    'tension' => 0.3,
+                    'fill' => false,
+                    'pointRadius' => 2,
                 ];
                 $colorIdx++;
                 $assignedTypes[] = $type;
@@ -108,10 +111,13 @@ class DeviceGraphs extends Page
                     [
                         'label' => Metric::typeLabel($type),
                         'data' => $entries->map(fn ($e) => [
-                            'date' => $e->metric_date->format('Y-m-d H:i'),
-                            'value' => $e->metric_value,
+                            'x' => $e->metric_date->getTimestampMs(),
+                            'y' => $e->metric_value,
                         ])->values()->toArray(),
-                        'color' => self::CHART_COLORS[0],
+                        'borderColor' => self::CHART_COLORS[0],
+                        'tension' => 0.3,
+                        'fill' => false,
+                        'pointRadius' => 2,
                     ],
                 ],
             ];
@@ -128,6 +134,8 @@ class DeviceGraphs extends Page
             : $user->devices()->with('deviceModel')->get();
 
         $result = [];
+        $minMs = $this->getTimeRangeSince()->getTimestampMs();
+        $maxMs = now()->getTimestampMs();
 
         foreach ($devices as $device) {
             $type = $device->deviceModel?->type;
@@ -147,6 +155,8 @@ class DeviceGraphs extends Page
                 $result[] = [
                     'device' => $device,
                     'chartGroups' => $chartGroups,
+                    'min' => $minMs,
+                    'max' => $maxMs,
                 ];
             }
         }
@@ -164,55 +174,5 @@ class DeviceGraphs extends Page
             '30d' => now()->subDays(30),
             default => now()->subDays(7),
         };
-    }
-
-    public function getChartDataJson(): array
-    {
-        $deviceMetrics = $this->getDeviceMetrics();
-        $result = [];
-
-        foreach ($deviceMetrics as $deviceData) {
-            $device = $deviceData['device'];
-
-            foreach ($deviceData['chartGroups'] as $group) {
-                $chartId = 'chart-' . $device->id . '-' . $group['key'];
-                $allLabels = [];
-                foreach ($group['datasets'] as $ds) {
-                    foreach ($ds['data'] as $point) {
-                        $allLabels[] = $point['date'];
-                    }
-                }
-                $labels = array_values(array_unique($allLabels));
-                sort($labels);
-
-                $datasets = [];
-                foreach ($group['datasets'] as $ds) {
-                    $dataMap = [];
-                    foreach ($ds['data'] as $point) {
-                        $dataMap[$point['date']] = $point['value'];
-                    }
-                    $mapped = [];
-                    foreach ($labels as $l) {
-                        $mapped[] = $dataMap[$l] ?? null;
-                    }
-                    $datasets[] = [
-                        'label' => $ds['label'],
-                        'data' => $mapped,
-                        'borderColor' => $ds['color'],
-                        'tension' => 0.3,
-                        'fill' => false,
-                        'pointRadius' => 2,
-                    ];
-                }
-
-                $result[$chartId] = [
-                    'labels' => $labels,
-                    'datasets' => $datasets,
-                    'groupKey' => $group['key'],
-                ];
-            }
-        }
-
-        return $result;
     }
 }
