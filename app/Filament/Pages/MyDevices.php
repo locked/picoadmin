@@ -44,6 +44,10 @@ class MyDevices extends Page
 
     public ?string $alarmChime = null;
 
+    public array $metricsByDevice = [];
+
+    public array $pumpHistoryByDevice = [];
+
     const DAY_BITS = [
         'mon' => 0b1000000,
         'tue' => 0b0100000,
@@ -56,6 +60,13 @@ class MyDevices extends Page
 
     public function mount(): void
     {
+        foreach ($this->getDevices() as $device) {
+            $this->metricsByDevice[$device->id] = $this->getMetrics($device->id);
+
+            if ($device->deviceModel?->type === 'water') {
+                $this->pumpHistoryByDevice[$device->id] = $this->getPumpHistory($device->id);
+            }
+        }
     }
 
     public function getDevices()
@@ -76,20 +87,43 @@ class MyDevices extends Page
 
         $type = $device->deviceModel?->type;
         $allowedTypes = Metric::allowedTypesForDevice($type);
+        if (empty($allowedTypes)) return [];
 
         $since = now()->subDays($days);
 
-        return Metric::where('device_id', $deviceId)
+        $counts = Metric::where('device_id', $deviceId)
             ->whereIn('metric_type', $allowedTypes)
             ->where('metric_date', '>=', $since)
-            ->orderBy('metric_date')
-            ->get()
-            ->groupBy(fn ($m) => Metric::typeLabel($m->metric_type))
-            ->map(fn ($entries) => $entries->map(fn ($e) => [
-                'date' => $e->metric_date->format('Y-m-d H:i'),
-                'value' => $e->metric_value,
-            ])->toArray())
-            ->toArray();
+            ->selectRaw('metric_type, COUNT(*) as count')
+            ->groupBy('metric_type')
+            ->pluck('count', 'metric_type');
+
+        $latest = Metric::query()
+            ->from('metrics as m')
+            ->joinSub(
+                Metric::query()
+                    ->select('metric_type')
+                    ->selectRaw('MAX(metric_date) as max_date')
+                    ->where('device_id', $deviceId)
+                    ->whereIn('metric_type', $allowedTypes)
+                    ->where('metric_date', '>=', $since)
+                    ->groupBy('metric_type'),
+                'latest',
+                fn ($join) => $join->on('m.metric_type', '=', 'latest.metric_type')
+                    ->on('m.metric_date', '=', 'latest.max_date')
+            )
+            ->select('m.metric_type', 'm.metric_value')
+            ->get();
+
+        $result = [];
+        foreach ($latest as $row) {
+            $result[Metric::typeLabel($row->metric_type)] = [
+                'latest' => $row->metric_value,
+                'count' => (int) ($counts[$row->metric_type] ?? 0),
+            ];
+        }
+
+        return $result;
     }
 
     public function getPumpHistory(int $deviceId): array

@@ -10,6 +10,7 @@
 - `app/Filament/Resources/` — Admin CRUD: DeviceResource, DeviceModelResource, FirmwareResource, UserResource
 - `app/Filament/Widgets/` — DeviceStatsOverview (admin), UserDeviceStats (user-scoped), MetricsChart
 - `app/AvatarProviders/LocalInitialsProvider.php` — SVG initials avatar, no external calls
+- `app/Http/Middleware/PerformanceLogger.php` — Per-request DB/perf logging
 - `app/Models/` — User, Device, DeviceModel, Firmware, Metric, Alarm
 - `resources/views/filament/pages/` — Blade templates for MyDevices, DeviceGraphs
 - `public/js/vendor/` — Chart.js, annotation plugin, date-fns adapter (all locally hosted)
@@ -54,10 +55,30 @@ Mon=64, Tue=32, Wed=16, Thu=8, Fri=4, Sat=2, Sun=1
 - Normality zones via chartjs-plugin-annotation: Good (0-600 green), Acceptable (600-1000 yellow), Poor (1000-2500 red)
 - `@push('scripts')` with `livewire:initialized` for Chart.js init — works on full page load
 - Chart.js datasets include `borderColor`/`tension`/`fill`/`pointRadius` directly from PHP (no JS remapping)
+- Performance: 24h range queries raw rows; 3d+ ranges aggregate by hour in SQL (`DATE_FORMAT(...,"%Y-%m-%d %H:00")` + `AVG(metric_value)`, grouped by metric_type, hour_bucket) — `queryMetricsForDevice()` returns grouped rows either as Metric models (24h) or stdClass with Carbon metric_date
 
 ### Pump History (MyDevices)
 - Table shows last 10 pump triggers where `metric_value > 0`
 - Duration formatted as seconds if >= 1000ms, otherwise milliseconds
+
+### MyDevices performance (cached in mount)
+- `metricsByDevice` and `pumpHistoryByDevice` public arrays computed ONCE in `mount()`, NOT in the blade
+- Blade reads `$this->metricsByDevice[$device->id]` — avoids re-running metrics queries on every Livewire re-render (e.g. alarm editing)
+- `getMetrics()` uses aggregates only (COUNT per type + latest value via joinSub on MAX(metric_date)), never loads all rows
+- Never call query methods directly in the blade template — Livewire re-renders it on every interaction
+
+### Dashboard MetricsChart widget (hourly aggregation)
+- NEVER `->get()` all metric rows for a period into PHP — memory exhaustion → white page
+- Aggregate in SQL: `DATE_FORMAT(metric_date, "%Y-%m-%d %H:00") as hour_bucket, AVG(metric_value)` grouped by `device_id, metric_type, hour_bucket`
+- Full hourly label range generated in PHP (168 buckets for 7 days), values mapped by `deviceId.type.hour_bucket` key
+- Only ~(devices × types) × 168 points max, instead of one row per measurement
+
+### Performance Logging (PerformanceLogger middleware)
+- Registered globally via `$middleware->prepend()` in `bootstrap/app.php`
+- Every request logs to `storage/logs/laravel.log`: method, URL, user id, `db_queries` count, `max_query_ms`, `total_ms` (server-side page load)
+- Queries captured via `DB::listen` in `handle()`, logged in `terminate()` (fresh instance → data stored on `$request->attributes`)
+- Queries with duration > 500ms included in a `slow_queries` array in the same log line
+- `/up` health check path is skipped
 
 ## Gotchas & Pitfalls
 

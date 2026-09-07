@@ -140,20 +140,20 @@
 
                     {{-- Metrics Section --}}
                     @php
-                        $metrics = $this->getMetrics($device->id);
+                        $metrics = $this->metricsByDevice[$device->id] ?? [];
                     @endphp
                     @if (count($metrics) > 0)
                         <div class="mt-4">
                             <h3 class="text-lg font-semibold mb-3">Sensor Data (Last 7 Days)</h3>
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                @foreach ($metrics as $type => $entries)
+                                @foreach ($metrics as $type => $data)
                                     <div class="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
                                         <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{{ $type }}</h4>
                                         <div class="text-2xl font-bold">
-                                            {{ end($entries)['value'] ?? 'N/A' }}
+                                            {{ $data['latest'] ?? 'N/A' }}
                                         </div>
                                         <p class="text-xs text-gray-500 mt-1">
-                                            {{ count($entries) }} readings
+                                            {{ $data['count'] ?? 0 }} readings
                                         </p>
                                     </div>
                                 @endforeach
@@ -163,7 +163,7 @@
 
                     {{-- Pump History (for water devices) --}}
                     @if ($device->deviceModel?->type === 'water')
-                        @php $pumpHistory = $this->getPumpHistory($device->id); @endphp
+                        @php $pumpHistory = $this->pumpHistoryByDevice[$device->id] ?? []; @endphp
                         <div class="mt-4">
                             <h3 class="text-lg font-semibold mb-3">Pump History</h3>
                             @if (count($pumpHistory) > 0)

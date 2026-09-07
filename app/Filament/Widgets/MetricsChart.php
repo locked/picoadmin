@@ -26,52 +26,67 @@ class MetricsChart extends ChartWidget
             return ['datasets' => [], 'labels' => []];
         }
 
-        $since = Carbon::now()->subDays(7);
+        $since = Carbon::now()->subDays(7)->startOfHour();
 
-        $datasets = [];
-        $allLabels = collect();
+        $deviceIds = $devices->pluck('id')->all();
+        $deviceById = $devices->keyBy('id');
 
-        foreach ($devices as $device) {
-            $metrics = Metric::where('device_id', $device->id)
-                ->where('metric_date', '>=', $since)
-                ->orderBy('metric_date')
-                ->get();
+        $rows = Metric::whereIn('device_id', $deviceIds)
+            ->where('metric_date', '>=', $since)
+            ->where('metric_type', '!=', Metric::TYPE_PUMP)
+            ->where('metric_type', '!=', Metric::TYPE_MEM_FREE)
+            ->where(function ($query) {
+                $query->where('metric_type', '!=', Metric::TYPE_STCC4_CO2)
+                    ->orWhere('metric_value', '<=', 5000);
+            })
+            ->selectRaw(
+                'device_id, metric_type, DATE_FORMAT(metric_date, "%Y-%m-%d %H:00") as hour_bucket, AVG(metric_value) as avg_value'
+            )
+            ->groupBy('device_id', 'metric_type', 'hour_bucket')
+            ->orderBy('hour_bucket')
+            ->get();
 
-            $grouped = $metrics->groupBy('metric_type');
-
-            foreach ($grouped as $type => $entries) {
-                $label = $device->serialnumber . ' - ' . Metric::typeLabel($type);
-                $allLabels->push(...$entries->pluck('metric_date')->values()->all());
-
-                $datasets[] = [
-                    'label' => $label,
-                    'data' => $entries->map(fn ($e) => [
-                        'x' => Carbon::parse($e->metric_date)->format('Y-m-d H:i'),
-                        'y' => $e->metric_value,
-                    ])->toArray(),
-                ];
-            }
+        $labels = [];
+        $cursor = $since->copy();
+        $now = Carbon::now();
+        while ($cursor->lessThanOrEqualTo($now)) {
+            $labels[] = $cursor->format('Y-m-d H:00');
+            $cursor->addHour();
         }
 
-        $labels = $allLabels
-            ->map(fn ($d) => $d instanceof Carbon ? $d->format('M d H:i') : $d)
-            ->unique()
-            ->sort()
-            ->values()
-            ->all();
+        $points = [];
+        foreach ($rows as $row) {
+            $points[$row->device_id . '.' . $row->metric_type . '.' . $row->hour_bucket] = round((float) $row->avg_value, 1);
+        }
+
+        $datasets = [];
+        foreach ($rows->groupBy(fn ($r) => $r->device_id . '|' . $r->metric_type) as $key => $group) {
+            [$deviceId, $type] = explode('|', $key);
+            $device = $deviceById[$deviceId] ?? null;
+            if (!$device) {
+                continue;
+            }
+
+            $label = ($device->name ?? $device->serialnumber) . ' - ' . Metric::typeLabel((int) $type);
+
+            $data = [];
+            foreach ($labels as $l) {
+                $data[] = $points[$deviceId . '.' . $type . '.' . $l] ?? null;
+            }
+
+            $datasets[] = [
+                'label' => $label,
+                'data' => $data,
+                'borderColor' => $this->getColorForLabel($label),
+                'tension' => 0.3,
+                'fill' => false,
+                'pointRadius' => 1,
+            ];
+        }
 
         return [
-            'datasets' => array_map(function ($ds) use ($labels) {
-                $dataMap = collect($ds['data'])->pluck('y', 'x')->toArray();
-                return [
-                    'label' => $ds['label'],
-                    'data' => array_map(fn ($l) => $dataMap[$l] ?? null, $labels),
-                    'borderColor' => $this->getColorForLabel($ds['label']),
-                    'tension' => 0.3,
-                    'fill' => false,
-                ];
-            }, $datasets),
-            'labels' => $labels,
+            'datasets' => $datasets,
+            'labels' => array_map(fn ($l) => Carbon::parse($l)->format('M d H:i'), $labels),
         ];
     }
 
@@ -84,7 +99,8 @@ class MetricsChart extends ChartWidget
     {
         return [
             'responsive' => true,
-            'maintainAspectRatio' => false,
+            'maintainAspectRatio' => true,
+            'aspectRatio' => 3,
             'scales' => [
                 'x' => [
                     'type' => 'category',

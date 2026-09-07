@@ -5,6 +5,7 @@ namespace App\Filament\Pages;
 use App\Models\Device;
 use App\Models\Metric;
 use Filament\Pages\Page;
+use Illuminate\Support\Carbon;
 
 class DeviceGraphs extends Page
 {
@@ -142,12 +143,7 @@ class DeviceGraphs extends Page
 
             $allowedTypes = Metric::allowedTypesForDevice($type);
 
-            $metricsByType = Metric::where('device_id', $device->id)
-                ->whereIn('metric_type', $allowedTypes)
-                ->where('metric_date', '>=', $this->getTimeRangeSince())
-                ->orderBy('metric_date')
-                ->get()
-                ->groupBy('metric_type');
+            $metricsByType = $this->queryMetricsForDevice($device->id, $allowedTypes);
 
             $chartGroups = $this->buildChartGroups($allowedTypes, $metricsByType);
 
@@ -162,6 +158,31 @@ class DeviceGraphs extends Page
         }
 
         return $result;
+    }
+
+    private function queryMetricsForDevice(int $deviceId, array $allowedTypes)
+    {
+        $query = Metric::where('device_id', $deviceId)
+            ->whereIn('metric_type', $allowedTypes)
+            ->where('metric_date', '>=', $this->getTimeRangeSince());
+
+        if ($this->timeRange === '24h') {
+            return $query->orderBy('metric_date')->get()->groupBy('metric_type');
+        }
+
+        $rows = $query
+            ->selectRaw(
+                'metric_type, DATE_FORMAT(metric_date, "%Y-%m-%d %H:00") as hour_bucket, AVG(metric_value) as avg_value'
+            )
+            ->groupBy('metric_type', 'hour_bucket')
+            ->orderBy('hour_bucket')
+            ->get();
+
+        return $rows->groupBy('metric_type')->map(fn ($group) => $group->map(fn ($row) => (object) [
+            'metric_date' => Carbon::parse($row->hour_bucket),
+            'metric_value' => round((float) $row->avg_value, 1),
+            'metric_type' => $row->metric_type,
+        ]));
     }
 
     private function getTimeRangeSince(): \Illuminate\Support\Carbon
