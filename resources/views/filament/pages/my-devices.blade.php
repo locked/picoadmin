@@ -73,6 +73,7 @@
                                                     <label class="text-xs text-gray-500 block mb-1">Chime</label>
                                                     <select wire:model="alarmChime" class="fi-input w-full rounded-lg bg-white dark:bg-white/5 border border-gray-300 dark:border-white/10 px-3 py-2 text-sm">
                                                         <option value="">None</option>
+                                                        <option value="whatsmyname.wav">whatsmyname.wav</option>
                                                         <option value="Tellement.wav">Tellement.wav</option>
                                                         <option value="fleurdelune.wav">fleurdelune.wav</option>
                                                         <option value="santiano.wav">santiano.wav</option>
